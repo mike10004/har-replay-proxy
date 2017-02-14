@@ -1,6 +1,7 @@
 {
   "version": "1.1.0",
   "name": "server-replay",
+  "private": true,
   "description": "Replay server responses from a HAR file",
   "main": "index.js",
   "scripts": {
@@ -21,10 +22,10 @@
     "proxy",
     "replay"
   ],
-  "author": "Stuart Knightley <stuart@stuartk.com>",
+  "author": "Mike Chaberski <mchaberski@gmail.com>",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git@github.com:Stuk/server-replay.git"
+    "url": "git@github.com:mike10004/server-replay.git"
   }
 }

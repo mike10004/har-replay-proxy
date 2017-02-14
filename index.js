@@ -38,8 +38,15 @@ function makeRequestListener(entries, options) {
     var fs = options.fs || _fs;
 
     return function (request, response) {
+        var originalRequestUrl = request.url;
         if (debug) {
             console.log(request.method, request.url);
+        }
+        config.requestTransforms.forEach(function(transform){
+          request = transform(request);
+        })
+        if (debug && originalRequestUrl !== request.url) {
+          console.log("transformed url", request.url);
         }
         request.parsedUrl = URL.parse(request.url, true);
 

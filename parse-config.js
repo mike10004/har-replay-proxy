@@ -43,6 +43,14 @@ module.exports = function (text) {
                 }
             };
         }),
+        requestTransforms: (config.requestTransforms || []).map(function(transform){
+            return function(request) {
+                var urlRegex = parseValue(transform.url.from);
+                var urlReplacement = parseValue(transform.url.to);
+                request.url = request.url.replace(urlRegex, urlReplacement);
+                return request;
+            };
+        }),
         replacements: (config.replacements || []).map(function (replacement) {
             var match = parseValue(replacement.match);
             // by default `replace` doesn't globally replace plain strings,
