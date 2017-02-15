@@ -18,6 +18,11 @@ var parseConfig = require("../parse-config");
 
 describe("readme", function () {
     var config;
+    function regex(str) {
+        return {
+            "regex": str
+        };
+    }
     beforeEach(function () {
         config = parseConfig(JSON.stringify({
             "version": 1,
@@ -25,6 +30,29 @@ describe("readme", function () {
                 {
                     "match": {"regex": ".*\\/static\\/(.*)"},
                     "path": "./public/$1"
+                }
+            ],
+            "responseHeaderTransforms": [
+                {
+                    "nameMatch": "foo",
+                    "valueImage": "cap"
+                },
+                {
+                    "nameMatch": "bar",
+                    "nameImage": "wut"
+                },
+                {
+                    "nameMatch": regex("(foo\\d+)"),
+                    "nameImage": "foo_numbered"
+                },
+                {
+                    "nameMatch": regex("baz(\\d+)"),
+                    "nameImage": "gaw$1"
+                },
+                {
+                    "nameMatch": regex("([Ll]ocation)"),
+                    "valueMatch": regex("^https://(.*)"),
+                    "valueImage": "http://$1"
                 }
             ],
             "replacements": [
@@ -63,6 +91,42 @@ describe("readme", function () {
             expect(config.replacements[1]("a\nhttps\nb\n   https\nc\n", {})).toEqual("a\nhttp\nb\n   http\nc\n");
         });
     });
+
+    describe("responseHeaderTransforms", function(){
+        it("parses stuff correctly", function(){
+            function headerize(name, value) {
+                return {
+                    'name': name,
+                    'value': value
+                };
+            }
+            
+            function doAllTransforms(header) {
+                config.responseHeaderTransforms.forEach(function(transform){
+                    header = transform(header);
+                });
+                return header;
+            }
+
+            function examine(header, expected) {
+                var actual = doAllTransforms(header);
+                expect(actual).toEqual(expected);
+            }
+
+            expect(config.responseHeaderTransforms.length).toEqual(5);
+            for (var i = 0; i < config.responseHeaderTransforms.length; i++) {
+                var t = config.responseHeaderTransforms[i];
+                expect(typeof(t)).toEqual('function');
+            }
+            examine(headerize("bean", "123"), headerize("bean", "123"));
+            examine(headerize("foo", "000"), headerize("foo", "cap"));
+            examine(headerize("bar", "gaw"), headerize("wut", "gaw"));
+            examine(headerize("foo3", "jkl"), headerize("foo_numbered", "jkl"));
+            examine(headerize("baz8", "qwer"), headerize("gaw8", "qwer"));
+            examine(headerize("Location", "http://foo.com/"), headerize("Location", "http://foo.com/"));
+            examine(headerize("Location", "https://foo.com/"), headerize("Location", "http://foo.com/"));
+        });
+    })
 });
 
 it(("parses a config file without all properties"), function () {

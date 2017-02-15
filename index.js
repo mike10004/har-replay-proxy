@@ -117,13 +117,20 @@ function serveError(requestUrl, response, entryResponse, localPath) {
     return false;
 }
 
-function serveHeaders(response, entryResponse) {
+function serveHeaders(response, entryResponse, config) {
     // Not really a header, but...
     response.statusCode = (entryResponse.status === 304) ? 200 : entryResponse.status;
 
     for (var h = 0; h < entryResponse.headers.length; h++) {
         var name = entryResponse.headers[h].name;
         var value = entryResponse.headers[h].value;
+
+        var nameValuePair = {'name': name, 'value': value};
+        config.responseHeaderTransforms.forEach(function(transform){
+            nameValuePair = transform(nameValuePair);
+        })
+        name = nameValuePair.name;
+        value = nameValuePair.value;
 
         if (name.toLowerCase() === "content-length") continue;
         if (name.toLowerCase() === "content-encoding") continue;
@@ -186,7 +193,7 @@ function isBinary(entryResponse) {
 
 function serveEntry(request, response, entry, config) {
     var entryResponse = entry.response;
-    serveHeaders(response, entryResponse);
+    serveHeaders(response, entryResponse, config);
 
     if (!entryResponse.content.buffer) {
         if (isBase64Encoded(entryResponse)) {

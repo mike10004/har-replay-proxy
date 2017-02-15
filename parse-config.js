@@ -15,6 +15,9 @@
  */
 
 var matchComment = /^\s*\/\/.*$/gm;
+var alwaysTrue = function() {
+    return true;
+};
 
 module.exports = function (text) {
     if (!text) {
@@ -40,6 +43,54 @@ module.exports = function (text) {
             return function (url) {
                 if (url.search(match) !== -1) {
                     return url.replace(match, path);
+                }
+            };
+        }),
+        responseHeaderTransforms: (config.responseHeaderTransforms || []).map(function(transformSpec){
+            function toMatcher(value) {
+                if (typeof(value) === 'function') {
+                    return value;
+                }
+                if (typeof(value) === 'string') {
+                    return function(query) {
+                        return value === query;
+                    };
+                }
+                if (value instanceof RegExp) {
+                    return function(query) {
+                        return value.test(query);
+                    };
+                }
+                throw new Error('value must be string, RegExp, or function');
+            }
+            function toTransform(match, image) {
+                if (match instanceof RegExp) {
+                    return function(value) {
+                        return value.replace(match, image);
+                    };
+                }
+                return function() {
+                    return image;
+                }
+            }
+            function isApplicable(nameValuePair, nameMatch, valueMatch) {
+                return toMatcher(nameMatch)(nameValuePair.name) && toMatcher(valueMatch)(nameValuePair.value);
+            }
+            function ifUndefined(query, alternate) {
+                return typeof(query) === 'undefined' ? alternate : query;
+            }
+            return function(header) {
+                var nameMatch = typeof(transformSpec.nameMatch) === 'undefined' ? alwaysTrue : parseValue(transformSpec.nameMatch);
+                var valueMatch = typeof(transformSpec.valueMatch) === 'undefined' ? alwaysTrue : parseValue(transformSpec.valueMatch);
+                if (isApplicable(header, nameMatch, valueMatch)) {
+                    var transformName = toTransform(nameMatch, ifUndefined(transformSpec.nameImage, header.name));
+                    var transformValue = toTransform(valueMatch, ifUndefined(transformSpec.valueImage, header.value));
+                    return {
+                        'name': transformName(header.name),
+                        'value': transformValue(header.value)
+                    };
+                } else {
+                    return header;
                 }
             };
         }),
