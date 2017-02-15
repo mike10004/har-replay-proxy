@@ -20,12 +20,12 @@ var URL = require("url");
 var PATH = require("path");
 var mime = require("mime");
 var heuristic = require("./heuristic");
+var _NOOP = function() {};
 
 exports = module.exports = serverReplay;
-function serverReplay(har, options) {
+function serverReplay(har, options, callback) {
     var server = http.createServer(makeRequestListener(har.log.entries, options));
-
-    server.listen(options.port);
+    server.listen(options.port, callback || _NOOP);
 }
 
 // Export for testing

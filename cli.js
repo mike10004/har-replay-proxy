@@ -68,7 +68,9 @@ serverReplay(har, {
     resolvePath: PATH.dirname(configPath),
     port: argv.port,
     debug: argv.debug
+}, function() {
+    console.log("har-replay-proxy: Listening on localhost:" + argv.port);
 });
 
-console.log("Listening at http://localhost:" + argv.port);
-console.log("Try " + har.log.entries[0].request.url.replace(/^https/, "http"));
+
+
