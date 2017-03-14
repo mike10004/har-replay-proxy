@@ -1,7 +1,8 @@
-server-replay
-=============
+har-replay-proxy
+================
 
-Replay server responses from a [.har file](http://en.wikipedia.org/wiki/.har).
+Fork of [Stuk/server-replay](https://github.com/Stuk/server-replay). Replay server 
+responses from a [.har file](http://en.wikipedia.org/wiki/.har).
 
 Useful if…
 
