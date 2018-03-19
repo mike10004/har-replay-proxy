@@ -1,5 +1,5 @@
 {
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "name": "har-replay-proxy",
   "description": "Replay server responses from a HAR file",
@@ -15,7 +15,7 @@
     "yargs": "^1.3.2"
   },
   "devDependencies": {
-    "jasminum": "0.0.4"
+    "jasminum": "0.0.6"
   },
   "keywords": [
     "har",
@@ -29,6 +29,6 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git@github.com:mike10004/har-replay-proxy.git"
+    "url": "https://github.com/mike10004/har-replay-proxy.git"
   }
 }
