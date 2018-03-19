@@ -99,7 +99,7 @@ module.exports = {};
         this.origin = origin;
     }
     
-    function logInteraction(options, request, responseSummary) {
+    function logInteraction(options, request, response) {
         if (options.debug) {
             console.log(response.status, request.method, request.url, response.contentType, response.contentLength, response.lengthType, response.origin);
         }

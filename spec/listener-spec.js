@@ -113,7 +113,8 @@ describe('makeRequestListener', () => {
                 mappings: [],
                 replacements: [],
                 responseHeaderTransforms: [],
-            }
+            },
+            debug: true
         };
         const requestListener = makeRequestListener(entries, options);
         const request = new MockRequest("GET", entries[0].request.url);
