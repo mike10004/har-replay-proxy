@@ -14,23 +14,83 @@
  * limitations under the License.
  */
 
-var makeRequestListener = require("../index").makeRequestListener;
+const HRP = require('../index');
+const makeRequestListener = HRP.makeRequestListener;
+const assert = require('assert');
 
-function MockRequest(url) {
+function MockRequest(method, url) {
+    this.method = method;
     this.url = url;
+    const headers = {};
+
+    this.setHeader = function(name, value) {
+        headers[name] = value;
+    };
 }
 
-function MockResponse() {}
-MockResponse.prototype.setHeader = function() {};
-MockResponse.prototype.end = function() {};
+function MockResponse() {
 
-describe("path resolution", function () {
+    const headers = {};
+    const buffer = Buffer.alloc(1024, 0, 'utf8');
+    const headerBuffer = Buffer.alloc(1024, 0, 'utf8');
+    let ended = false;
+    const self = this;
+
+    this.setHeader = function(name, value) {
+        headers[name] = value;
+    };
+
+    function doWrite(content, encoding, callback, internalCallback) {
+        assert(typeof content !== 'undefined');
+        if (typeof encoding === 'function') {
+            callback = encoding;
+            encoding = 'utf8';
+        }
+        if (typeof callback === 'undefined') {
+            callback = () => {};
+        }
+        buffer.write(content);
+        internalCallback();
+        callback();
+    };
+
+    this.write = function(content, encoding, callback) {
+        doWrite(content, encoding, callback, () => {});
+    };
+
+    this.end = function(content, encoding, callback) {
+        doWrite(content, encoding, callback, () => {
+            ended = true;
+        });
+    };
+
+    this.writeHead = function(statuscode, statusMessage, headers) {
+        self.statusCode = statuscode;
+        self.statusMessage = statusMessage;
+        for (let name in headers) {
+            self.setHeader(name, headers[name]);
+        };
+    };
+
+    this.mock = {
+        getContentAsString: function(encoding) {
+            return buffer.toString(encoding);
+        }
+    };
+
+    this.getHeader = function(name) {
+        return headers[name];
+    };
+}
+
+describe("makeRequestListener", function () {
     it("resolves paths relative to the resolvePath", function () {
         var readFile = jasmine.createSpy();
         var listener = makeRequestListener([], {
             config: {
                 mappings: [function () { return "./dir/name.js"; }],
-                replacements: []
+                replacements: [],
+                responseHeaderTransforms: [],
             },
             resolvePath: "/root",
             fs: {
@@ -38,8 +98,29 @@ describe("path resolution", function () {
             }
         });
         var response = new MockResponse();
-        listener(new MockRequest(""), response);
+        listener(new MockRequest("GET", "http://foo.bar/"), response);
         expect(readFile).toHaveBeenCalled();
         expect(readFile.mostRecentCall.args[0]).toEqual("/root/dir/name.js");
     });
+});
+
+describe('makeRequestListener', () => {
+    it('serves matching entry from HAR', () => {
+        const har = JSON.parse(require('fs').readFileSync('./spec/http.www.example.com.har'));
+        const entries = har.log.entries;
+        const options = {
+            config: {
+                mappings: [],
+                replacements: [],
+                responseHeaderTransforms: [],
+            }
+        };
+        const requestListener = makeRequestListener(entries, options);
+        const request = new MockRequest("GET", entries[0].request.url);
+        const response = new MockResponse();
+        requestListener(request, response);
+        expect(response.statusCode).toEqual(200);
+        const responseStr = response.mock.getContentAsString();
+        expect(responseStr.indexOf('ABCDEFG Domain') >= 0).toEqual(true);
+    })
 });

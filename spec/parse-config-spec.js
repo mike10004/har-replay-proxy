@@ -133,4 +133,5 @@ it(("parses a config file without all properties"), function () {
     var config = parseConfig('{"version": 1}');
     expect(config.mappings).toEqual([]);
     expect(config.replacements).toEqual([]);
+    expect(config.responseHeaderTransforms).toEqual([]);
 });

@@ -16,12 +16,12 @@
  * limitations under the License.
  */
 
-var fs = require("fs");
-var PATH = require("path");
-var serverReplay = require("./index");
-var parseConfig = require("./parse-config");
+const fs = require("fs");
+const PATH = require("path");
+const serverReplay = require("./index").serverReplay;
+const parseConfig = require("./parse-config");
 
-var argv = require("yargs")
+const argv = require("yargs")
     .usage("Usage: $0 [options] <.har file>")
     .options({
         c: {
