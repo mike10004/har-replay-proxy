@@ -1,5 +1,5 @@
 {
-  "version": "0.0.2",
+  "version": "0.0.3",
   "private": true,
   "name": "har-replay-proxy",
   "description": "Replay server responses from a HAR file",
