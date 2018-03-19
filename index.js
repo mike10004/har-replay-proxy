@@ -38,9 +38,6 @@ function makeRequestListener(entries, options) {
     var fs = options.fs || _fs;
 
     return function (request, response) {
-        if (debug) {
-            console.log(request.method, request.url);
-        }
         request.parsedUrl = URL.parse(request.url, true);
 
         var entry = heuristic(entries, request);
@@ -77,7 +74,7 @@ function makeRequestListener(entries, options) {
             fs.readFile(localPath, function (err, content) {
                 if (err) {
                     console.error("Error: Could not read", localPath, "requested from", request.url);
-                    serveError(request.url, response, null, localPath);
+                    serveError(request, response, null, localPath);
                     return;
                 }
 
@@ -85,7 +82,7 @@ function makeRequestListener(entries, options) {
                 serveEntry(request, response, entry, config);
             });
         } else {
-            if (!serveError(request.url, response, entry && entry.response)) {
+            if (!serveError(request, response, entry && entry.response)) {
                 serveEntry(request, response, entry, config);
             }
         }
@@ -93,11 +90,36 @@ function makeRequestListener(entries, options) {
     };
 }
 
-function serveError(requestUrl, response, entryResponse, localPath) {
+function ResponseSummary(status, contentType, contentLength, lengthType, origin) {
+    this.status = status;
+    this.contentType = contentType;
+    this.contentLength = contentLength;
+    this.lengthType = lengthType;
+    this.origin = origin;
+}
+
+function logInteraction(request, responseSummary) {
+    if (debug) {
+        console.log(response.status, request.method, request.url, response.contentType, response.contentLength, response.lengthType, response.origin);
+    }
+}
+
+/**
+ * Maybe serves an error response.
+ * @param {object} request 
+ * @param {object} response 
+ * @param {object} entryResponse 
+ * @param {string} localPath 
+ * @returns {boolean} true if a response was served, false otherwise
+ */
+function serveError(request, response, entryResponse, localPath) {
     if (!entryResponse) {
         console.log("Not found:", requestUrl);
-        response.writeHead(404, "Not found", {"content-type": "text/plain"});
-        response.end("404 Not found" + (localPath ? ", while looking for " + localPath : ""));
+        const contentType = "text/plain";
+        response.writeHead(404, "Not found", {"content-type": contentType});
+        const content = "404 Not found" + (localPath ? ", while looking for " + localPath : "");
+        response.end(content);
+        logInteraction(request, new ResponseSummary(404, contentType, content.length, 'string', 'noentrymatch'))
         return true;
     }
 
@@ -106,11 +128,12 @@ function serveError(requestUrl, response, entryResponse, localPath) {
     // detecting missing status for other generators.
     if (entryResponse._error || !entryResponse.status) {
         var error = entryResponse._error ? JSON.stringify(entryResponse._error) : "Missing status";
-        response.writeHead(410, error, {"content-type": "text/plain"});
-        response.end(
-            "HAR response error: " + error +
-            "\n\nThis resource might have been blocked by the client recording the HAR file. For example, by the AdBlock or Ghostery extensions."
-        );
+        const contentType = "text/plain";
+        response.writeHead(410, error, {"content-type": contentType});
+        const content = "HAR response error: " + error +
+                "\n\nThis resource might have been blocked by the client recording the HAR file. For example, by the AdBlock or Ghostery extensions.";
+        response.end(content);
+        logInteraction(request, new ResponseSummary(410, contentType, content.length, 'string', 'clientblocked'));
         return true;
     }
 
@@ -118,9 +141,10 @@ function serveError(requestUrl, response, entryResponse, localPath) {
 }
 
 function serveHeaders(response, entryResponse, config) {
+    const status = (entryResponse.status === 304) ? 200 : entryResponse.status;
     // Not really a header, but...
-    response.statusCode = (entryResponse.status === 304) ? 200 : entryResponse.status;
-
+    response.statusCode = status;
+    let contentType = null;
     for (var h = 0; h < entryResponse.headers.length; h++) {
         var name = entryResponse.headers[h].name;
         var value = entryResponse.headers[h].value;
@@ -147,11 +171,15 @@ function serveHeaders(response, entryResponse, config) {
         } else {
             response.setHeader(name, value);
         }
+        if (name.toLowerCase() === 'content-type') {
+            contentType = value;
+        }
     }
 
     // Try to make sure nothing is cached
     response.setHeader("cache-control", "no-cache, no-store, must-revalidate");
     response.setHeader("pragma", "no-cache");
+    return new ResponseSummary(status, contentType);
 }
 
 function manipulateContent(request, entry, replacements) {
@@ -192,8 +220,8 @@ function isBinary(entryResponse) {
 }
 
 function serveEntry(request, response, entry, config) {
-    var entryResponse = entry.response;
-    serveHeaders(response, entryResponse, config);
+    const entryResponse = entry.response;
+    const responseSummary = serveHeaders(response, entryResponse, config);
 
     if (!entryResponse.content.buffer) {
         if (isBase64Encoded(entryResponse)) {
@@ -202,6 +230,10 @@ function serveEntry(request, response, entry, config) {
             entryResponse.content.buffer = new Buffer(entryResponse.content.text || "", 'utf8');
         }
     }
-
-    response.end(manipulateContent(request, entry, config.replacements));
+    const content = manipulateContent(request, entry, config.replacements);
+    response.end(content);
+    responseSummary.contentLength = content.length;
+    responseSummary.lengthType = typeof content;
+    responseSummary.origin = 'matchedentry';
+    logInteraction(request, responseSummary);
 }
