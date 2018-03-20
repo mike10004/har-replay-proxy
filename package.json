@@ -1,21 +1,22 @@
 {
-  "version": "0.0.3",
+  "version": "0.0.5",
   "private": true,
   "name": "har-replay-proxy",
   "description": "Replay server responses from a HAR file",
   "main": "index.js",
   "scripts": {
-    "test": "jasminum spec"
+    "test": "mocha"
   },
   "bin": {
     "server-replay": "./cli.js"
   },
   "dependencies": {
-    "mime": "^1.2.11",
-    "yargs": "^1.3.2"
+    "mime": "^2.2.0",
+    "yargs": "^1.3.2",
+    "content-type-parser": "^1.0.2"
   },
   "devDependencies": {
-    "jasminum": "0.0.6"
+    "mocha": "^4.1.0"
   },
   "keywords": [
     "har",

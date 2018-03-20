@@ -49,7 +49,13 @@ function MockResponse() {
         if (typeof callback === 'undefined') {
             callback = () => {};
         }
-        buffer.write(content);
+        if (typeof content === 'string') {
+            buffer.write(content);
+        } else if (content instanceof Buffer) {
+            content.copy(buffer);
+        } else {
+            assert.fail("can't copy from " + content);
+        }
         internalCallback();
         callback();
     };
@@ -85,7 +91,10 @@ function MockResponse() {
 
 describe("makeRequestListener", function () {
     it("resolves paths relative to the resolvePath", function () {
-        var readFile = jasmine.createSpy();
+        let readFileCalls = [];
+        const readFileSpy = function(value) {
+            readFileCalls.push(value);
+        };
         var listener = makeRequestListener([], {
             config: {
                 mappings: [function () { return "./dir/name.js"; }],
@@ -94,19 +103,18 @@ describe("makeRequestListener", function () {
             },
             resolvePath: "/root",
             fs: {
-                readFile: readFile
+                readFile: readFileSpy
             }
         });
         var response = new MockResponse();
         listener(new MockRequest("GET", "http://foo.bar/"), response);
-        expect(readFile).toHaveBeenCalled();
-        expect(readFile.mostRecentCall.args[0]).toEqual("/root/dir/name.js");
+        assert.deepEqual(readFileCalls, ["/root/dir/name.js"]); 
     });
 });
 
 describe('makeRequestListener', () => {
     it('serves matching entry from HAR', () => {
-        const har = JSON.parse(require('fs').readFileSync('./spec/http.www.example.com.har'));
+        const har = JSON.parse(require('fs').readFileSync('test/http.www.example.com.har'));
         const entries = har.log.entries;
         const options = {
             config: {
@@ -120,8 +128,8 @@ describe('makeRequestListener', () => {
         const request = new MockRequest("GET", entries[0].request.url);
         const response = new MockResponse();
         requestListener(request, response);
-        expect(response.statusCode).toEqual(200);
+        assert.equal(response.statusCode, 200);
         const responseStr = response.mock.getContentAsString();
-        expect(responseStr.indexOf('ABCDEFG Domain') >= 0).toEqual(true);
+        assert(responseStr.indexOf('ABCDEFG Domain') >= 0);
     })
 });

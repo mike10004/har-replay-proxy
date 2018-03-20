@@ -14,14 +14,15 @@
  * limitations under the License.
  */
 
-var _fs = require("fs");
-var http = require("http");
-var URL = require("url");
-var PATH = require("path");
-var mime = require("mime");
-var heuristic = require("./heuristic");
-var _NOOP = function() {};
-
+const _fs = require("fs");
+const http = require("http");
+const URL = require("url");
+const PATH = require("path");
+const mime = require("mime");
+const heuristic = require("./heuristic");
+const _NOOP = function() {};
+const parseContentType = require("content-type-parser");
+const crypto = require('crypto');
 module.exports = {};
 
 (function(){
@@ -55,7 +56,7 @@ module.exports = {};
                 // If there's local content, but no entry in the HAR, create a shim
                 // entry so that we can still serve the file
                 if (!entry) {
-                    var mimeType = mime.lookup(localPath);
+                    const mimeType = mime.getType(localPath);
                     entry = {
                         response: {
                             status: 200,
@@ -90,18 +91,27 @@ module.exports = {};
     
         };
     }
-    
-    function ResponseSummary(status, contentType, contentLength, lengthType, origin) {
+
+    function makeHashProvider(content) {
+        if (typeof content === 'undefined') {
+            return () => '';
+        } else {
+            return () => crypto.createHash('md5').update(content).digest('hex');
+        }
+    }
+
+    function ResponseSummary(status, contentType, origin, content) {
         this.status = status;
         this.contentType = contentType;
-        this.contentLength = contentLength;
-        this.lengthType = lengthType;
+        this.contentLength = content.length;
         this.origin = origin;
+        this.hashProvider = makeHashProvider(content);
     }
     
     function logInteraction(options, request, response) {
         if (options.debug) {
-            console.log(response.status, request.method, request.url, response.contentType, response.contentLength, response.lengthType, response.origin);
+            const hash = response.hashProvider();
+            console.log(response.status, request.method, request.url, response.contentType, response.contentLength, response.origin, hash);
         }
     }
     
@@ -116,12 +126,11 @@ module.exports = {};
     function serveError(options, request, response, entryResponse, localPath) {
         const requestUrl = request.url, requestMethod = request.method;
         if (!entryResponse) {
-            console.log("Not found:", requestUrl);
-            const contentType = "text/plain";
+            const contentType = "text/plain; charset=UTF-8"; // just ascii text
             response.writeHead(404, "Not found", {"content-type": contentType});
-            const content = "404 Not found" + (localPath ? ", while looking for " + localPath : "");
+            const content = "404 Not found";
             response.end(content);
-            logInteraction(options, request, new ResponseSummary(404, contentType, content.length, 'string', 'noentrymatch'))
+            logInteraction(options, request, new ResponseSummary(404, contentType, 'noentrymatch', content));
             return true;
         }
     
@@ -130,27 +139,29 @@ module.exports = {};
         // detecting missing status for other generators.
         if (entryResponse._error || !entryResponse.status) {
             var error = entryResponse._error ? JSON.stringify(entryResponse._error) : "Missing status";
-            const contentType = "text/plain";
+            const contentType = "text/plain; charset=UTF-8";
             response.writeHead(410, error, {"content-type": contentType});
-            const content = "HAR response error: " + error +
-                    "\n\nThis resource might have been blocked by the client recording the HAR file. For example, by the AdBlock or Ghostery extensions.";
+            const message = "HAR response error: " + error +
+                "\n\nThis resource might have been blocked by the client recording the HAR file. For example, by the AdBlock or Ghostery extensions.";
+            const content = Buffer.from(message, 'utf8');
             response.end(content);
-            logInteraction(options, request, new ResponseSummary(410, contentType, content.length, 'string', 'clientblocked'));
+            logInteraction(options, request, new ResponseSummary(410, contentType, 'clientblocked', content));
             return true;
         }
     
         return false;
     }
     
-    function serveHeaders(response, entryResponse, config) {
+    function serveHeaders(response, entryResponse, contentType, config) {
         const status = (entryResponse.status === 304) ? 200 : entryResponse.status;
         // Not really a header, but...
         response.statusCode = status;
-        let contentType = null;
         for (var h = 0; h < entryResponse.headers.length; h++) {
             var name = entryResponse.headers[h].name;
             var value = entryResponse.headers[h].value;
-    
+            if (name.toLowerCase() === 'content-type') {
+                value = contentType;
+            }
             var nameValuePair = {'name': name, 'value': value};
             config.responseHeaderTransforms.forEach(function(transform){
                 nameValuePair = transform(nameValuePair);
@@ -173,38 +184,66 @@ module.exports = {};
             } else {
                 response.setHeader(name, value);
             }
-            if (name.toLowerCase() === 'content-type') {
-                contentType = value;
-            }
         }
     
         // Try to make sure nothing is cached
         response.setHeader("cache-control", "no-cache, no-store, must-revalidate");
         response.setHeader("pragma", "no-cache");
-        return new ResponseSummary(status, contentType);
+        return status;
     }
     
+    function TypedContent(buffer, mimeType) {
+        
+        this.getBuffer = function() {
+            return buffer || Buffer.from('', 'utf8');
+        }
+
+        this.getContentType = function() {
+            return (mimeType || 'application/octet-stream').toString();
+        }
+    }
+
+    function extractContentType(harEntry) {
+        let mimeType;
+        if (harEntry && harEntry.response && harEntry.response.content) {
+            mimeType = harEntry.response.content.mimeType;
+        }
+        return parseContentType(mimeType || 'application/octet-stream');
+    }
+
+    /**
+     * 
+     * @param {object} request request being answered
+     * @param {object} entry HAR entry
+     * @param {Array} replacements array of replacement functions
+     * @returns {TypedContent} content object providing access to bytes and mime type
+     */
     function manipulateContent(request, entry, replacements) {
         var entryResponse = entry.response;
-        var content;
-        if (isBinary(entryResponse)) {
+        let content;
+        let contentType = extractContentType(entry);
+        if (isBinary(contentType)) {
             content = entryResponse.content.buffer;
         } else {
-            content = entryResponse.content.buffer.toString("utf8");
+            content = entryResponse.content.buffer.toString('utf8');
             var context = {
                 request: request,
                 entry: entry
             };
-            replacements.forEach(function (replacement) {
+            replacements.forEach(replacement => {
                 content = replacement(content, context);
             });
+            if (typeof content === 'string') {
+                contentType.set('charset', contentType.get('charset') || 'utf8');
+                content = Buffer.from(content, contentType.get('charset'));
+            }
         }
     
         if (entryResponse.content.size > 0 && !content) {
             console.error("Error:", entry.request.url, "has a non-zero size, but there is no content in the HAR file");
         }
     
-        return content;
+        return new TypedContent(content, contentType.toString());
     }
     
     function isBase64Encoded(entryResponse) {
@@ -216,27 +255,28 @@ module.exports = {};
         return contentSize && contentSize >= base64Size && contentSize <= base64Size + 4;
     }
     
-    // FIXME
-    function isBinary(entryResponse) {
-        return /^image\/|application\/octet-stream/.test(entryResponse.content.mimeType);
+    function isBinary(ct) {
+        if (ct && ct.isText() || ct.isXML() || ct.subtype === 'json') {
+            return false;
+        }
+        return true;
     }
     
     function serveEntry(options, request, response, entry, config) {
         const entryResponse = entry.response;
-        const responseSummary = serveHeaders(response, entryResponse, config);
     
         if (!entryResponse.content.buffer) {
             if (isBase64Encoded(entryResponse)) {
-                entryResponse.content.buffer = new Buffer(entryResponse.content.text || "", 'base64');
+                entryResponse.content.buffer = Buffer.from(entryResponse.content.text || "", 'base64');
             } else {
-                entryResponse.content.buffer = new Buffer(entryResponse.content.text || "", 'utf8');
+                entryResponse.content.buffer = Buffer.from(entryResponse.content.text || "", 'utf8');
             }
         }
-        const content = manipulateContent(request, entry, config.replacements);
+        const typedContent = manipulateContent(request, entry, config.replacements);
+        const status = serveHeaders(response, entryResponse, typedContent.getContentType(), config);
+        const content = typedContent.getBuffer();
         response.end(content);
-        responseSummary.contentLength = content.length;
-        responseSummary.lengthType = typeof content;
-        responseSummary.origin = 'matchedentry';
+        const responseSummary = new ResponseSummary(status, typedContent.getContentType(), 'matchedentry', content);
         logInteraction(options, request, responseSummary);
     }
 

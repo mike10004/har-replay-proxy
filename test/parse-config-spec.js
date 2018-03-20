@@ -15,8 +15,17 @@
  */
 
 var parseConfig = require("../parse-config");
+const assert = require('assert');
 
-describe("readme", function () {
+const expect = function(actual) {
+    return {
+        toEqual: function(expected) {
+            assert.deepEqual(actual, expected);
+        }
+    };
+}
+
+describe("parseConfig", function () {
     var config;
     function regex(str) {
         return {
